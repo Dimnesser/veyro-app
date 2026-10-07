@@ -29,7 +29,7 @@
   }
   function probe(base) {
     var ctl = new AbortController();
-    setTimeout(function () { ctl.abort(); }, 6000);
+    setTimeout(function () { ctl.abort(); }, 10000);
     return fetch(base + '/api/vpn/ping', { cache: 'no-store', signal: ctl.signal }).then(function (r) {
       if (!r.ok) throw new Error(String(r.status));
       return base;
@@ -40,14 +40,18 @@
     var token = raw.slice(2);
     if (!TOKEN.test(token)) return fail();
     btn.style.display = 'none';
-    // the main name if it answers, otherwise the first spare that does
-    probe(bases[0])
-      .catch(function () { return Promise.any(bases.slice(1).map(probe)); })
-      .then(function (base) { hand(base + '/api/sub/' + token); })
-      .catch(function () {
+    // all names at once: the main one wins if it answers; a spare wins once the main one failed or stayed silent 2.5 s more
+    var done = false;
+    function win(base) { if (!done) { done = true; hand(base + '/api/sub/' + token); } }
+    var primary = probe(bases[0]);
+    var spares = Promise.any(bases.slice(1).map(probe));
+    primary.then(win, function () {
+      spares.then(win, function () {
         msg.textContent = 'Нет связи с VEYRO. Проверьте интернет и откройте ссылку снова. / No connection to VEYRO — check your internet and try again.';
         msg.className = 'err';
       });
+    });
+    spares.then(function (b) { setTimeout(function () { win(b); }, 2500); }, function () { /* the main name decides */ });
     return;
   }
   var prefix = location.origin + '/api/sub/';
